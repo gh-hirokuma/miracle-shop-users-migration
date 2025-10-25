@@ -1,0 +1,390 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-25",
+  "project": {
+    "name": "Shopify to Supabase User Migration",
+    "description": "Shopifyの顧客データとメタフィールドをSupabaseに同期するマイグレーションAPI"
+  },
+  "shopify_api": {
+    "base_url": "https://{store-name}.myshopify.com/admin/api/2024-10",
+    "authentication": {
+      "type": "Bearer",
+      "header": "X-Shopify-Access-Token",
+      "scopes": [
+        "read_customers",
+        "read_customer_metafields"
+      ]
+    },
+    "rate_limit": {
+      "requests_per_second": 2,
+      "burst_limit": 40
+    },
+    "endpoints": {
+      "list_customers": {
+        "method": "GET",
+        "path": "/customers.json",
+        "parameters": {
+          "limit": {
+            "type": "integer",
+            "max": 250,
+            "default": 50,
+            "description": "取得件数"
+          },
+          "page_info": {
+            "type": "string",
+            "required": false,
+            "description": "ページネーション用トークン"
+          }
+        },
+        "pagination": {
+          "type": "cursor",
+          "header": "Link",
+          "next_rel": "next"
+        }
+      },
+      "get_customer_metafields": {
+        "method": "GET",
+        "path": "/customers/{customer_id}/metafields.json",
+        "parameters": {
+          "customer_id": {
+            "type": "integer",
+            "required": true,
+            "description": "顧客ID"
+          }
+        }
+      }
+    }
+  },
+  "data_mapping": {
+    "basic_fields": [
+      {
+        "shopify_field": "email",
+        "supabase_column": "email",
+        "type": "string",
+        "required": true,
+        "transformation": "none"
+      },
+      {
+        "shopify_field": "id",
+        "supabase_column": "shopify_user_id",
+        "type": "string",
+        "required": true,
+        "transformation": "toString"
+      },
+      {
+        "shopify_field": "*",
+        "supabase_column": "shopify_meta_data",
+        "type": "jsonb",
+        "required": false,
+        "transformation": "store_complete_object"
+      }
+    ],
+    "metafields": [
+      {
+        "shopify_metafield": {
+          "namespace": "custom",
+          "key": "routine",
+          "type": "json"
+        },
+        "supabase_column": "routine",
+        "supabase_type": "jsonb",
+        "transformation": {
+          "method": "json_parse",
+          "example_input": "{\"date\":\"2025-10-25T00:00:00.000\",\"routines\":{\"brush\":{\"count\":1},\"tongue_brush\":{\"count\":0},\"fross\":{\"count\":0}}}",
+          "example_output": {
+            "date": "2025-10-25T00:00:00.000",
+            "routines": {
+              "brush": {
+                "count": 1
+              },
+              "tongue_brush": {
+                "count": 0
+              },
+              "fross": {
+                "count": 0
+              }
+            }
+          }
+        },
+        "error_handling": "set_null_on_parse_error"
+      },
+      {
+        "shopify_metafield": {
+          "namespace": "custom",
+          "key": "dental_analysis",
+          "type": "json",
+          "note": "⚠️ Shopifyでは dental_analysis だが Supabaseでは brush_score に保存"
+        },
+        "supabase_column": "brush_score",
+        "supabase_type": "jsonb",
+        "transformation": {
+          "method": "json_parse",
+          "example_input": "{\"date\":\"\",\"score\":0}",
+          "example_output": {
+            "date": "",
+            "score": 0
+          }
+        },
+        "error_handling": "set_null_on_parse_error"
+      },
+      {
+        "shopify_metafield": {
+          "namespace": "custom",
+          "key": "point",
+          "type": "number_integer",
+          "note": "⚠️ Shopifyでは point（単数形）だが Supabaseでは points（複数形）に保存"
+        },
+        "supabase_column": "points",
+        "supabase_type": "integer",
+        "transformation": {
+          "method": "to_integer",
+          "example_input": 5,
+          "example_output": 5,
+          "default_on_error": 0
+        },
+        "error_handling": "set_zero_on_parse_error"
+      }
+    ]
+  },
+  "supabase_api": {
+    "base_url": "https://{project}.supabase.co",
+    "authentication": {
+      "type": "API Key",
+      "header": "apikey",
+      "key_type": "service_role",
+      "warning": "⚠️ service_roleキーを使用。anonキーでは不可。"
+    },
+    "table": {
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "primary_key": true,
+          "description": "主キー（自動生成）"
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "unique": true,
+          "description": "メールアドレス（UNIQUE制約必須）"
+        },
+        {
+          "name": "points",
+          "type": "integer",
+          "nullable": false,
+          "default": 0,
+          "description": "ポイント数"
+        },
+        {
+          "name": "shopify_user_id",
+          "type": "text",
+          "nullable": true,
+          "indexed": true,
+          "description": "Shopify顧客ID"
+        },
+        {
+          "name": "routine",
+          "type": "jsonb",
+          "nullable": true,
+          "description": "ルーティンデータ"
+        },
+        {
+          "name": "brush_score",
+          "type": "jsonb",
+          "nullable": true,
+          "description": "ブラッシングスコア（Shopifyのdental_analysis）"
+        },
+        {
+          "name": "migrated",
+          "type": "boolean",
+          "nullable": false,
+          "default": false,
+          "warning": "⚠️ このカラムは触らない！他システムで使用中",
+          "description": "マイグレーションフラグ（ノータッチ）"
+        },
+        {
+          "name": "migrated_version",
+          "type": "text",
+          "nullable": true,
+          "warning": "⚠️ このカラムは触らない！他システムで使用中",
+          "description": "マイグレーションバージョン（ノータッチ）"
+        },
+        {
+          "name": "shopify_meta_data",
+          "type": "jsonb",
+          "nullable": true,
+          "description": "Shopifyの完全なメタデータ"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "description": "作成日時（自動）"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "description": "更新日時（自動）"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "UNIQUE",
+          "column": "email",
+          "name": "users_email_unique",
+          "required": true,
+          "sql": "ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);"
+        }
+      ]
+    },
+    "operations": {
+      "upsert": {
+        "method": "upsert",
+        "conflict_column": "email",
+        "ignore_duplicates": false,
+        "batch_size_recommended": 50,
+        "example": {
+          "javascript": "await supabase.from('users').upsert(userData, { onConflict: 'email' })",
+          "python": "supabase.table('users').upsert(user_data, on_conflict='email').execute()"
+        }
+      }
+    }
+  },
+  "processing_flow": {
+    "steps": [
+      {
+        "step": 1,
+        "name": "接続テスト",
+        "description": "Shopify APIとSupabaseへの接続を確認"
+      },
+      {
+        "step": 2,
+        "name": "顧客一覧取得",
+        "description": "Shopify APIから全顧客を取得（ページネーション）",
+        "estimated_time": "約1秒（306件の場合）"
+      },
+      {
+        "step": 3,
+        "name": "メタフィールド取得",
+        "description": "各顧客のメタフィールドを取得",
+        "estimated_time": "約2分30秒（306件の場合）",
+        "rate_limit": "2リクエスト/秒"
+      },
+      {
+        "step": 4,
+        "name": "データ変換",
+        "description": "Shopifyデータ → Supabase形式に変換",
+        "estimated_time": "即時"
+      },
+      {
+        "step": 5,
+        "name": "バッチ登録",
+        "description": "Supabaseにバッチ登録（50件ずつ）",
+        "estimated_time": "約0.5秒（306件の場合）"
+      }
+    ],
+    "total_estimated_time": "約2分30秒（306件の場合）"
+  },
+  "error_handling": {
+    "shopify_errors": [
+      {
+        "status_code": 429,
+        "error": "Too Many Requests",
+        "description": "レート制限超過",
+        "retry_strategy": {
+          "method": "exponential_backoff",
+          "initial_delay_ms": 1000,
+          "max_retries": 3,
+          "factor": 2
+        }
+      },
+      {
+        "status_code": 404,
+        "error": "Not Found",
+        "description": "顧客が見つからない",
+        "retry_strategy": {
+          "method": "skip",
+          "action": "ログ記録して次へ"
+        }
+      },
+      {
+        "status_code": 401,
+        "error": "Unauthorized",
+        "description": "認証エラー",
+        "retry_strategy": {
+          "method": "abort",
+          "action": "マイグレーション中断"
+        }
+      }
+    ],
+    "supabase_errors": [
+      {
+        "code": "23505",
+        "error": "UNIQUE constraint violation",
+        "description": "emailの重複",
+        "solution": "通常発生しない（upsertのため）"
+      },
+      {
+        "message": "no unique constraint matching ON CONFLICT",
+        "description": "emailにUNIQUE制約がない",
+        "solution": "ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);"
+      }
+    ],
+    "parse_errors": [
+      {
+        "type": "JSON parse error",
+        "handling": "nullを設定して続行",
+        "log_level": "warning"
+      },
+      {
+        "type": "Number parse error",
+        "handling": "0を設定して続行",
+        "log_level": "warning"
+      }
+    ]
+  },
+  "performance": {
+    "metrics": {
+      "customers_per_page": 250,
+      "batch_size": 50,
+      "rate_limit": "2 requests/second",
+      "total_time_306_users": "約157秒（2分37秒）"
+    },
+    "optimization": {
+      "caching": {
+        "enabled": true,
+        "storage": "local_filesystem",
+        "format": "json",
+        "invalidation": "manual",
+        "speedup": "105倍（1.5秒に短縮）"
+      }
+    }
+  },
+  "important_notes": [
+    "⚠️ migratedとmigrated_versionカラムは絶対に触らない",
+    "⚠️ Shopifyのdental_analysisはSupabaseのbrush_scoreに保存",
+    "⚠️ Shopifyのpoint（単数）はSupabaseのpoints（複数）に保存",
+    "⚠️ emailカラムにUNIQUE制約が必須",
+    "⚠️ Supabaseはservice_roleキーを使用（anonキー不可）",
+    "⚠️ レート制限を遵守（2リクエスト/秒）"
+  ],
+  "test_checklist": [
+    "[ ] Shopifyアクセストークンの取得確認",
+    "[ ] 必要なスコープの確認（read_customers, read_customer_metafields）",
+    "[ ] SupabaseのemailカラムにUNIQUE制約があることを確認",
+    "[ ] 1件のユーザーでテスト実行",
+    "[ ] 10件のユーザーでテスト実行",
+    "[ ] データマッピングの確認（routine, brush_score, points）",
+    "[ ] エラーハンドリングのテスト（429エラーなど）",
+    "[ ] 全件マイグレーションの実行",
+    "[ ] データ整合性の確認"
+  ]
+}
+

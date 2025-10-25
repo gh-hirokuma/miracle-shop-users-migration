@@ -316,9 +316,20 @@ npm run dev
 
 ## 📚 関連ドキュメント
 
+### 外部ドキュメント
 - [Shopify Admin API Documentation](https://shopify.dev/api/admin-rest)
 - [Supabase JavaScript Client](https://supabase.com/docs/reference/javascript/introduction)
-- プロジェクト詳細: `docs/system-summary.json`
-- データベーススキーマ: `docs/database-schema.json`
-- マイグレーションガイド: `docs/migration-guide.json`
+
+### プロジェクトドキュメント
+- **プロジェクト詳細**: `docs/system-summary.json`
+- **データベーススキーマ**: `docs/database-schema.json`
+- **マイグレーションガイド**: `docs/migration-guide.json`
+
+### 🚀 API移行用ドキュメント（別サービスへの移植用）
+- **📖 詳細仕様書**: `docs/api-migration-guide.md` - 完全な実装ガイド
+- **📋 API仕様（JSON）**: `docs/api-specification.json` - 機械可読な仕様
+- **💻 クイックスタート**: `docs/quick-start-example.js` - 最小限の実装例
+- **🗺️ データマッピング**: `docs/data-mapping-reference.md` - フィールド対応表
+
+これらのドキュメントは、このマイグレーション機能を別のサービス/言語に移植する際に使用できます。
 
