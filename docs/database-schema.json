@@ -1,0 +1,240 @@
+{
+  "database": "miracle",
+  "supabase_project_id": "evunnosaajjcpjcikuki",
+  "region": "ap-northeast-1",
+  "postgres_version": "15",
+  "schema": "public",
+  "tables": [
+    {
+      "name": "users",
+      "comment": "ユーザー情報テーブル - Shopifyユーザーと同期",
+      "rls_enabled": true,
+      "ddl": "CREATE TABLE public.users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT NOT NULL,\n  points INTEGER NOT NULL DEFAULT 0,\n  shopify_user_id TEXT,\n  routine JSONB,\n  brush_score JSONB,\n  migrated BOOLEAN NOT NULL DEFAULT false,\n  migrated_version TEXT,\n  shopify_meta_data JSONB,\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);",
+      "columns": [
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "is_nullable": false,
+          "column_default": "gen_random_uuid()",
+          "is_primary_key": true,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "主キー"
+        },
+        {
+          "name": "email",
+          "data_type": "text",
+          "is_nullable": false,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "メールアドレス（Shopifyから同期）"
+        },
+        {
+          "name": "points",
+          "data_type": "integer",
+          "is_nullable": false,
+          "column_default": "0",
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": 32,
+          "comment": "ユーザーのポイント数"
+        },
+        {
+          "name": "shopify_user_id",
+          "data_type": "text",
+          "is_nullable": true,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "Shopifyのカスタマー ID"
+        },
+        {
+          "name": "routine",
+          "data_type": "jsonb",
+          "is_nullable": true,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "ユーザーのルーティンデータ（任意のJSON構造）",
+          "example": {
+            "morning": ["brush", "floss"],
+            "night": ["brush", "mouthwash"]
+          }
+        },
+        {
+          "name": "brush_score",
+          "data_type": "jsonb",
+          "is_nullable": true,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "ブラッシングスコアデータ（任意のJSON構造）",
+          "example": {
+            "accuracy": 95,
+            "duration": 120,
+            "coverage": 98
+          }
+        },
+        {
+          "name": "migrated",
+          "data_type": "boolean",
+          "is_nullable": false,
+          "column_default": "false",
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "マイグレーション済みフラグ"
+        },
+        {
+          "name": "migrated_version",
+          "data_type": "text",
+          "is_nullable": true,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "マイグレーションバージョン（例: 1.0.0, 2.0.0）"
+        },
+        {
+          "name": "shopify_meta_data",
+          "data_type": "jsonb",
+          "is_nullable": true,
+          "column_default": null,
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "Shopifyから取得した完全な顧客データ",
+          "example": {
+            "id": 26440710160755,
+            "email": "user@example.com",
+            "first_name": "John",
+            "last_name": "Doe",
+            "phone": null,
+            "currency": "JPY",
+            "verified_email": true,
+            "state": "disabled",
+            "addresses": [],
+            "default_address": {}
+          }
+        },
+        {
+          "name": "created_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": true,
+          "column_default": "now()",
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "レコード作成日時"
+        },
+        {
+          "name": "updated_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": true,
+          "column_default": "now()",
+          "is_primary_key": false,
+          "character_maximum_length": null,
+          "numeric_precision": null,
+          "comment": "レコード更新日時（トリガーで自動更新）"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "users_pkey",
+          "unique": true,
+          "columns": ["id"],
+          "index_type": "btree",
+          "comment": "主キーインデックス"
+        },
+        {
+          "name": "idx_users_email",
+          "unique": false,
+          "columns": ["email"],
+          "index_type": "btree",
+          "comment": "メールアドレス検索用インデックス"
+        },
+        {
+          "name": "idx_users_shopify_user_id",
+          "unique": false,
+          "columns": ["shopify_user_id"],
+          "index_type": "btree",
+          "comment": "Shopify User ID検索用インデックス"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "users_pkey",
+          "type": "PRIMARY KEY",
+          "definition": "PRIMARY KEY (id)"
+        }
+      ],
+      "triggers": [
+        {
+          "name": "update_users_updated_at",
+          "timing": "BEFORE",
+          "event": "UPDATE",
+          "for_each": "ROW",
+          "function": "update_updated_at_column()",
+          "comment": "updated_atカラムを自動更新"
+        }
+      ],
+      "rls_policies": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "update_updated_at_column",
+      "return_type": "trigger",
+      "language": "plpgsql",
+      "definition": "CREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n    NEW.updated_at = NOW();\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;",
+      "comment": "updated_atカラムを現在時刻に更新するトリガー関数"
+    }
+  ],
+  "sample_data": {
+    "users": [
+      {
+        "id": "3a0ac314-3657-478e-943d-9e3003beeb88",
+        "email": "hiroshige.negishi2@tentspace.net",
+        "points": 0,
+        "shopify_user_id": "26440710160755",
+        "routine": null,
+        "brush_score": null,
+        "migrated": false,
+        "migrated_version": null,
+        "shopify_meta_data": {
+          "id": 26440710160755,
+          "email": "hiroshige.negishi2@tentspace.net",
+          "first_name": "piropiro",
+          "last_name": "piropiro",
+          "phone": null,
+          "state": "disabled",
+          "currency": "JPY",
+          "verified_email": true
+        },
+        "created_at": "2025-10-25T11:20:08.036581+00:00",
+        "updated_at": "2025-10-25T11:20:08.036581+00:00"
+      }
+    ]
+  },
+  "query_examples": {
+    "get_user_by_email": "SELECT * FROM users WHERE email = 'user@example.com';",
+    "get_user_by_shopify_id": "SELECT * FROM users WHERE shopify_user_id = '123456789';",
+    "get_users_with_points": "SELECT email, points FROM users WHERE points > 0 ORDER BY points DESC;",
+    "extract_first_name": "SELECT email, shopify_meta_data->>'first_name' as first_name FROM users;",
+    "get_verified_users": "SELECT * FROM users WHERE (shopify_meta_data->>'verified_email')::boolean = true;",
+    "update_points": "UPDATE users SET points = points + 10 WHERE email = 'user@example.com';",
+    "get_migrated_users": "SELECT * FROM users WHERE migrated = true;"
+  },
+  "migration_tools": {
+    "export_query": "COPY (SELECT * FROM users) TO STDOUT WITH CSV HEADER;",
+    "import_query": "COPY users FROM STDIN WITH CSV HEADER;",
+    "json_export": "SELECT json_agg(row_to_json(users.*)) FROM users;",
+    "backup_table": "CREATE TABLE users_backup AS SELECT * FROM users;"
+  }
+}
+

@@ -1,0 +1,283 @@
+{
+  "migration_guide": {
+    "version": "1.0.0",
+    "last_updated": "2025-10-25",
+    "purpose": "別プロジェクトへのデータ移行用ガイド"
+  },
+  "source_system": {
+    "name": "Miracle Point Checkin Admin",
+    "supabase_project_id": "evunnosaajjcpjcikuki",
+    "project_name": "miracle",
+    "region": "ap-northeast-1",
+    "database_host": "db.evunnosaajjcpjcikuki.supabase.co",
+    "postgres_version": "15.8.1.073"
+  },
+  "connection_info": {
+    "note": "環境変数から取得してください",
+    "required_env_vars": [
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY"
+    ],
+    "connection_string_format": "postgresql://postgres:[PASSWORD]@db.evunnosaajjcpjcikuki.supabase.co:5432/postgres",
+    "rest_api_url": "https://evunnosaajjcpjcikuki.supabase.co/rest/v1/",
+    "anon_key_note": "一般的な読み取り操作用",
+    "service_role_key_note": "管理者操作・RLSバイパス用"
+  },
+  "target_tables": {
+    "primary": "users",
+    "related_tables": [
+      "clinics",
+      "checkins", 
+      "point_transmits",
+      "consumed_points",
+      "settings"
+    ]
+  },
+  "migration_steps": {
+    "step_1": {
+      "title": "データエクスポート",
+      "methods": [
+        {
+          "method": "SQL Export",
+          "command": "pg_dump -h db.evunnosaajjcpjcikuki.supabase.co -U postgres -d postgres -t users --data-only --column-inserts > users_data.sql"
+        },
+        {
+          "method": "CSV Export",
+          "command": "psql -h db.evunnosaajjcpjcikuki.supabase.co -U postgres -d postgres -c \"COPY users TO STDOUT WITH CSV HEADER\" > users_data.csv"
+        },
+        {
+          "method": "JSON Export",
+          "command": "psql -h db.evunnosaajjcpjcikuki.supabase.co -U postgres -d postgres -c \"SELECT json_agg(row_to_json(users.*)) FROM users\" -t > users_data.json"
+        },
+        {
+          "method": "Supabase REST API",
+          "url": "GET https://evunnosaajjcpjcikuki.supabase.co/rest/v1/users",
+          "headers": {
+            "apikey": "SUPABASE_SERVICE_ROLE_KEY",
+            "Authorization": "Bearer SUPABASE_SERVICE_ROLE_KEY"
+          }
+        }
+      ]
+    },
+    "step_2": {
+      "title": "スキーマ作成",
+      "sql": "CREATE TABLE users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT NOT NULL,\n  points INTEGER NOT NULL DEFAULT 0,\n  shopify_user_id TEXT,\n  routine JSONB,\n  brush_score JSONB,\n  migrated BOOLEAN NOT NULL DEFAULT false,\n  migrated_version TEXT,\n  shopify_meta_data JSONB,\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\n\nCREATE INDEX idx_users_email ON users(email);\nCREATE INDEX idx_users_shopify_user_id ON users(shopify_user_id);\n\nALTER TABLE users ENABLE ROW LEVEL SECURITY;\n\nCREATE OR REPLACE FUNCTION update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n    NEW.updated_at = NOW();\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER update_users_updated_at\n    BEFORE UPDATE ON users\n    FOR EACH ROW\n    EXECUTE FUNCTION update_updated_at_column();"
+    },
+    "step_3": {
+      "title": "データインポート",
+      "methods": [
+        {
+          "method": "SQL Import",
+          "command": "psql -h [NEW_HOST] -U postgres -d postgres -f users_data.sql"
+        },
+        {
+          "method": "CSV Import",
+          "command": "psql -h [NEW_HOST] -U postgres -d postgres -c \"COPY users FROM STDIN WITH CSV HEADER\" < users_data.csv"
+        },
+        {
+          "method": "Supabase Client (JavaScript)",
+          "code": "const { data, error } = await supabase\n  .from('users')\n  .insert(usersData);"
+        }
+      ]
+    },
+    "step_4": {
+      "title": "データ検証",
+      "checks": [
+        {
+          "check": "レコード数の確認",
+          "sql": "SELECT COUNT(*) FROM users;"
+        },
+        {
+          "check": "NULL値の確認",
+          "sql": "SELECT COUNT(*) FROM users WHERE email IS NULL OR points IS NULL;"
+        },
+        {
+          "check": "インデックスの確認",
+          "sql": "SELECT indexname FROM pg_indexes WHERE tablename = 'users';"
+        },
+        {
+          "check": "トリガーの確認",
+          "sql": "SELECT tgname FROM pg_trigger WHERE tgrelid = 'users'::regclass;"
+        }
+      ]
+    }
+  },
+  "data_mapping": {
+    "users_table": {
+      "id": {
+        "source": "users.id",
+        "target": "users.id",
+        "type": "uuid",
+        "transformation": "none",
+        "required": true
+      },
+      "email": {
+        "source": "users.email",
+        "target": "users.email",
+        "type": "text",
+        "transformation": "none",
+        "required": true,
+        "validation": "email format"
+      },
+      "points": {
+        "source": "users.points",
+        "target": "users.points",
+        "type": "integer",
+        "transformation": "none",
+        "required": true,
+        "default": 0
+      },
+      "shopify_user_id": {
+        "source": "users.shopify_user_id",
+        "target": "users.shopify_user_id",
+        "type": "text",
+        "transformation": "none",
+        "required": false
+      },
+      "routine": {
+        "source": "users.routine",
+        "target": "users.routine",
+        "type": "jsonb",
+        "transformation": "none",
+        "required": false
+      },
+      "brush_score": {
+        "source": "users.brush_score",
+        "target": "users.brush_score",
+        "type": "jsonb",
+        "transformation": "none",
+        "required": false
+      },
+      "migrated": {
+        "source": "users.migrated",
+        "target": "users.migrated",
+        "type": "boolean",
+        "transformation": "none",
+        "required": true,
+        "default": false
+      },
+      "migrated_version": {
+        "source": "users.migrated_version",
+        "target": "users.migrated_version",
+        "type": "text",
+        "transformation": "none",
+        "required": false
+      },
+      "shopify_meta_data": {
+        "source": "users.shopify_meta_data",
+        "target": "users.shopify_meta_data",
+        "type": "jsonb",
+        "transformation": "none",
+        "required": false
+      },
+      "created_at": {
+        "source": "users.created_at",
+        "target": "users.created_at",
+        "type": "timestamptz",
+        "transformation": "none",
+        "required": false
+      },
+      "updated_at": {
+        "source": "users.updated_at",
+        "target": "users.updated_at",
+        "type": "timestamptz",
+        "transformation": "none",
+        "required": false
+      }
+    }
+  },
+  "shopify_webhook_migration": {
+    "note": "移行先でもShopify Webhookを再設定する必要があります",
+    "webhooks_to_create": [
+      {
+        "event": "customers/create",
+        "url": "[NEW_DOMAIN]/api/webhook/shopify/users/created",
+        "secret": "新しいSHOPIFY_WEBHOOK_SECRETを生成"
+      },
+      {
+        "event": "customers/update",
+        "url": "[NEW_DOMAIN]/api/webhook/shopify/users/updated",
+        "secret": "同じSHOPIFY_WEBHOOK_SECRETを使用"
+      },
+      {
+        "event": "customers/delete",
+        "url": "[NEW_DOMAIN]/api/webhook/shopify/users/deleted",
+        "secret": "同じSHOPIFY_WEBHOOK_SECRETを使用"
+      }
+    ],
+    "old_webhooks": "移行完了後に削除推奨"
+  },
+  "environment_variables_migration": {
+    "variables": [
+      {
+        "name": "NEXT_PUBLIC_SUPABASE_URL",
+        "old_value": "https://evunnosaajjcpjcikuki.supabase.co",
+        "new_value": "[新しいSupabase ProjectのURL]",
+        "public": true
+      },
+      {
+        "name": "SUPABASE_SERVICE_ROLE_KEY",
+        "old_value": "[現在のキー]",
+        "new_value": "[新しいSupabase Projectのサービスロールキー]",
+        "public": false,
+        "security": "機密情報"
+      },
+      {
+        "name": "SECRET_KEY",
+        "old_value": "[現在のキー]",
+        "new_value": "[同じキーまたは新しいキー]",
+        "public": false,
+        "security": "機密情報",
+        "note": "APIクライアントも更新が必要"
+      },
+      {
+        "name": "SHOPIFY_WEBHOOK_SECRET",
+        "old_value": "02a9cb82b06508d42347803081823c11e1d29f48e9f51014c9b268c44127caa8",
+        "new_value": "[Shopifyで新しいWebhook作成時に生成される]",
+        "public": false,
+        "security": "機密情報",
+        "note": "Shopify側のWebhook設定も更新が必要"
+      }
+    ]
+  },
+  "rollback_plan": {
+    "backup_before_migration": {
+      "command": "pg_dump -h db.evunnosaajjcpjcikuki.supabase.co -U postgres -d postgres > backup_before_migration.sql",
+      "location": "安全な場所に保存"
+    },
+    "restore_command": "psql -h db.evunnosaajjcpjcikuki.supabase.co -U postgres -d postgres < backup_before_migration.sql"
+  },
+  "testing_checklist": [
+    "✅ データエクスポート成功",
+    "✅ スキーマ作成成功",
+    "✅ データインポート成功",
+    "✅ レコード数一致",
+    "✅ サンプルデータ検証",
+    "✅ API動作確認 (GET/POST/PUT)",
+    "✅ Shopify Webhook動作確認",
+    "✅ 署名検証動作確認",
+    "✅ 環境変数設定確認",
+    "✅ ログ出力確認"
+  ],
+  "troubleshooting": {
+    "common_issues": [
+      {
+        "issue": "UUID生成エラー",
+        "solution": "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"; を実行"
+      },
+      {
+        "issue": "JSONB型エラー",
+        "solution": "PostgreSQL 9.4以降を使用しているか確認"
+      },
+      {
+        "issue": "トリガー実行エラー",
+        "solution": "update_updated_at_column()関数が先に作成されているか確認"
+      },
+      {
+        "issue": "Webhook署名検証失敗",
+        "solution": "SHOPIFY_WEBHOOK_SECRETが正しく設定されているか確認、サーバー再起動"
+      }
+    ]
+  }
+}
+

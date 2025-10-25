@@ -1,0 +1,354 @@
+{
+  "project": {
+    "name": "Miracle Point Checkin Admin",
+    "description": "Shopifyユーザー管理とポイントシステムの管理画面",
+    "purpose": "Shopifyのサブ機能として、ユーザーのポイント、ルーティン、ブラッシングスコアを管理"
+  },
+  "supabase": {
+    "project_id": "evunnosaajjcpjcikuki",
+    "project_name": "miracle",
+    "region": "ap-northeast-1",
+    "status": "ACTIVE_HEALTHY",
+    "database": {
+      "host": "db.evunnosaajjcpjcikuki.supabase.co",
+      "version": "15.8.1.073",
+      "postgres_engine": "15"
+    }
+  },
+  "database": {
+    "tables": {
+      "users": {
+        "description": "ユーザー情報（Shopifyと同期）",
+        "rls_enabled": true,
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "主キー"
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "nullable": false,
+            "description": "メールアドレス"
+          },
+          {
+            "name": "points",
+            "type": "integer",
+            "nullable": false,
+            "default": 0,
+            "description": "ポイント数"
+          },
+          {
+            "name": "shopify_user_id",
+            "type": "text",
+            "nullable": true,
+            "description": "Shopifyユーザー ID",
+            "indexed": true
+          },
+          {
+            "name": "routine",
+            "type": "jsonb",
+            "nullable": true,
+            "description": "ルーティンデータ（任意のJSON構造）"
+          },
+          {
+            "name": "brush_score",
+            "type": "jsonb",
+            "nullable": true,
+            "description": "ブラッシングスコアデータ（任意のJSON構造）"
+          },
+          {
+            "name": "migrated",
+            "type": "boolean",
+            "nullable": false,
+            "default": false,
+            "description": "マイグレーションフラグ"
+          },
+          {
+            "name": "migrated_version",
+            "type": "text",
+            "nullable": true,
+            "description": "マイグレーションバージョン"
+          },
+          {
+            "name": "shopify_meta_data",
+            "type": "jsonb",
+            "nullable": true,
+            "description": "Shopifyからの完全なメタデータ"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamptz",
+            "nullable": true,
+            "default": "now()",
+            "description": "作成日時"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamptz",
+            "nullable": true,
+            "default": "now()",
+            "description": "更新日時（自動更新）"
+          }
+        ],
+        "indexes": [
+          {
+            "name": "idx_users_email",
+            "column": "email"
+          },
+          {
+            "name": "idx_users_shopify_user_id",
+            "column": "shopify_user_id"
+          }
+        ],
+        "triggers": [
+          {
+            "name": "update_users_updated_at",
+            "event": "BEFORE UPDATE",
+            "function": "update_updated_at_column()"
+          }
+        ]
+      },
+      "clinics": {
+        "description": "クリニック情報",
+        "rls_enabled": true,
+        "rows": 5
+      },
+      "checkins": {
+        "description": "チェックイン履歴",
+        "rls_enabled": false,
+        "rows": 23
+      },
+      "point_transmits": {
+        "description": "ポイント送信履歴",
+        "rls_enabled": true,
+        "rows": 32
+      },
+      "consumed_points": {
+        "description": "ポイント消費履歴",
+        "rls_enabled": true,
+        "rows": 9
+      },
+      "settings": {
+        "description": "システム設定",
+        "rls_enabled": true,
+        "rows": 1
+      }
+    }
+  },
+  "api_endpoints": {
+    "users": {
+      "base_path": "/api/users",
+      "methods": {
+        "GET": {
+          "description": "ユーザー情報の取得",
+          "authentication": "SECRET_KEY required",
+          "parameters": {
+            "secretKey": "string (required)",
+            "email": "string (required)"
+          }
+        },
+        "POST": {
+          "description": "ユーザー情報の作成",
+          "authentication": "SECRET_KEY required",
+          "body_parameters": {
+            "secretKey": "string (required)",
+            "email": "string (required)",
+            "points": "number (optional, default: 0)",
+            "shopify_user_id": "string (optional)",
+            "routine": "object (optional)",
+            "brush_score": "object (optional)",
+            "migrated": "boolean (optional, default: false)",
+            "migrated_version": "string (optional)",
+            "shopify_meta_data": "object (optional)"
+          }
+        },
+        "PUT": {
+          "description": "ユーザー情報の更新",
+          "authentication": "SECRET_KEY required",
+          "body_parameters": {
+            "secretKey": "string (required)",
+            "email": "string (required)",
+            "points": "number (optional)",
+            "shopify_user_id": "string (optional)",
+            "routine": "object (optional)",
+            "brush_score": "object (optional)",
+            "migrated": "boolean (optional)",
+            "migrated_version": "string (optional)",
+            "shopify_meta_data": "object (optional)"
+          }
+        }
+      }
+    }
+  },
+  "webhook_endpoints": {
+    "shopify_users_created": {
+      "path": "/api/webhook/shopify/users/created",
+      "shopify_event": "customers/create",
+      "authentication": "SHOPIFY_WEBHOOK_SECRET (HMAC-SHA256)",
+      "description": "Shopifyユーザー作成時に自動でusersテーブルに登録",
+      "action": "新規ユーザーを作成し、shopify_meta_dataに完全なJSONを保存"
+    },
+    "shopify_users_updated": {
+      "path": "/api/webhook/shopify/users/updated",
+      "shopify_event": "customers/update",
+      "authentication": "SHOPIFY_WEBHOOK_SECRET (HMAC-SHA256)",
+      "description": "Shopifyユーザー更新時にusersテーブルを更新",
+      "action": "既存ユーザーを更新（存在しない場合は新規作成）し、shopify_meta_dataを更新"
+    },
+    "shopify_users_deleted": {
+      "path": "/api/webhook/shopify/users/deleted",
+      "shopify_event": "customers/delete",
+      "authentication": "SHOPIFY_WEBHOOK_SECRET (HMAC-SHA256)",
+      "description": "Shopifyユーザー削除時にusersテーブルから削除",
+      "action": "物理削除（レコードを完全に削除）"
+    }
+  },
+  "environment_variables": {
+    "required": [
+      {
+        "name": "NEXT_PUBLIC_SUPABASE_URL",
+        "description": "SupabaseプロジェクトURL"
+      },
+      {
+        "name": "SUPABASE_SERVICE_ROLE_KEY",
+        "description": "Supabaseサービスロールキー（サーバーサイド用）"
+      },
+      {
+        "name": "SECRET_KEY",
+        "description": "API認証用シークレットキー"
+      },
+      {
+        "name": "SHOPIFY_WEBHOOK_SECRET",
+        "description": "Shopify Webhook署名検証用シークレット",
+        "example": "02a9cb82b06508d42347803081823c11e1d29f48e9f51014c9b268c44127caa8"
+      }
+    ]
+  },
+  "migrations": {
+    "history": [
+      {
+        "version": "20250514071738",
+        "name": "create_point_transmits_table"
+      },
+      {
+        "version": "20251002022242",
+        "name": "create_settings_table"
+      },
+      {
+        "version": "20251002032242",
+        "name": "change_min_forced_version_to_text"
+      },
+      {
+        "version": "20251002080521",
+        "name": "create_consumed_points_table"
+      },
+      {
+        "version": "latest",
+        "name": "drop_user_points_and_user_routines"
+      },
+      {
+        "version": "latest",
+        "name": "create_users_table"
+      },
+      {
+        "version": "latest",
+        "name": "add_shopify_user_id_to_user_points"
+      },
+      {
+        "version": "latest",
+        "name": "add_migrated_version_to_users"
+      },
+      {
+        "version": "latest",
+        "name": "add_shopify_meta_data_to_users"
+      }
+    ]
+  },
+  "shopify_integration": {
+    "webhooks": [
+      {
+        "event": "customers/create",
+        "url": "https://your-domain.com/api/webhook/shopify/users/created",
+        "format": "JSON",
+        "secret": "環境変数 SHOPIFY_WEBHOOK_SECRET に設定"
+      },
+      {
+        "event": "customers/update",
+        "url": "https://your-domain.com/api/webhook/shopify/users/updated",
+        "format": "JSON",
+        "secret": "環境変数 SHOPIFY_WEBHOOK_SECRET に設定"
+      },
+      {
+        "event": "customers/delete",
+        "url": "https://your-domain.com/api/webhook/shopify/users/deleted",
+        "format": "JSON",
+        "secret": "環境変数 SHOPIFY_WEBHOOK_SECRET に設定"
+      }
+    ],
+    "data_sync": {
+      "direction": "Shopify → Supabase (一方向)",
+      "method": "Webhook",
+      "stored_data": "完全なShopify顧客データをshopify_meta_data (JSONB)に保存"
+    }
+  },
+  "data_flow": {
+    "user_creation": [
+      "Shopifyでユーザー作成",
+      "Webhook: customers/create 送信",
+      "署名検証 (HMAC-SHA256)",
+      "Supabase users テーブルに挿入",
+      "shopify_meta_data に完全なJSONを保存"
+    ],
+    "user_update": [
+      "Shopifyでユーザー情報更新",
+      "Webhook: customers/update 送信",
+      "署名検証",
+      "emailまたはshopify_user_idで既存ユーザー検索",
+      "見つかれば更新、なければ新規作成",
+      "shopify_meta_data を最新データで更新"
+    ],
+    "user_deletion": [
+      "Shopifyでユーザー削除",
+      "Webhook: customers/delete 送信",
+      "署名検証",
+      "shopify_user_idまたはemailでユーザー検索",
+      "物理削除（レコード完全削除）"
+    ]
+  },
+  "tech_stack": {
+    "framework": "Next.js",
+    "language": "TypeScript",
+    "database": "Supabase (PostgreSQL)",
+    "authentication": {
+      "api": "SECRET_KEY (カスタム認証)",
+      "webhook": "HMAC-SHA256 (Shopify標準)"
+    },
+    "deployment": "未定義"
+  },
+  "notes": {
+    "features": [
+      "Shopifyユーザーと自動同期",
+      "ポイント管理システム",
+      "ルーティン・ブラッシングスコア管理",
+      "マイグレーション機能（migrated, migrated_versionフラグ）",
+      "Shopify完全データの保存（shopify_meta_data）"
+    ],
+    "design_decisions": [
+      "shopify_meta_dataに完全なJSONを保存することで柔軟性を確保",
+      "物理削除を採用（論理削除への変更も可能）",
+      "Webhook署名検証を必須化してセキュリティを強化",
+      "emailとshopify_user_idの両方でユーザー検索可能"
+    ],
+    "limitations": [
+      "Shopify → Supabaseの一方向同期のみ",
+      "削除は物理削除（データ復元不可）",
+      "RLSポリシーは未設定（必要に応じて追加）"
+    ]
+  }
+}
+
